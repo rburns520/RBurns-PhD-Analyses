@@ -1,0 +1,695 @@
+#### ============================================================== ####
+#### CLEANING LINKED MILLION MIGRANT-NIMS COHORT                    ####
+
+#### Author: Rachel Burns
+#### Study analysis data: Dec 12 2020 - April 20 2022
+#### ============================================================== ####
+
+### LOAD PACKAGES 
+
+if (!require('pacman')) install.packages('pacman')
+pacman::p_load(odbc, DBI, dbplyr, dplyr, haven, foreign, runner, patchwork, reshape2, RColorBrewer, webshot, officer, scales,
+               tidyverse,lubridate, stringi, DataLakeR, data.table, DescTools, broom, Hmisc, janitor, readxl,
+               collapse, mitml, lme4, Hmisc, epitools, data.table, epiR, flextable, gtsummary)
+
+
+### SET FORMAT FOR TABLES TO BE BROUGHT INTO WORD
+# Landscape
+sect_properties1 <- prop_section(
+  page_size = page_size(orient = "landscape",
+                        width = 8.3, height = 11.7),
+  type = "continuous",
+  page_margins = page_mar()
+)
+
+# Portrait
+sect_properties2 <- prop_section(
+  page_size = page_size(orient = "portrait"),
+  type = "continuous",
+  
+  page_margins = page_mar()
+)
+
+### COLORS FOR FIGURES
+mig <- "#4682B4" # blue
+eng <- "#B4464B" # dark red
+mig_work <- "#B4AF46" # gold/green
+
+
+#### ============================================================== ####
+#### LINKAGE TO MILLION MIGRANT LAST ENTRY COHORT AND CLEANING      ####
+#### ============================================================== ####
+#### Note: Only exploring up to three doses 
+
+### SET WORKING DIRECTORY
+
+### LOAD DATA - vaccination & last entry Million Migrant cohort
+vaccine_rank <- get_datalake("SELECT * FROM [table1].[dbo].[vaccine_linked]") # Latest update: May 05 2022 with Match rank variable
+last_entry <- fread("million_migrants_last_entry.csv")
+
+## Copy of original COVID vaccination dataset 
+covid_mig <- vaccine_rank
+
+## Renaming dose 1
+covid_mig1 <- covid_mig %>%
+  filter(dv_ve_dose=="1") %>%
+  select(nhs_number, dose1=dv_ve_dose, dose1_date=dv_DateAdministered, dob,
+         sex, postcode=, ethnicity=EthnicCategoryCode_Latest, match_rank, id)
+
+## Renaming dose 2
+covid_mig2 <- covid_mig %>%
+  filter(dv_ve_dose=="2") %>%
+  select(nhs_number, dose2=dv_ve_dose, dose2_date=dv_DateAdministered)
+
+## Renaming dose 3
+covid_mig3 <- covid_mig %>%
+  filter(dv_ve_dose=="3") %>%
+  select(nhs_number, dose3=dv_ve_dose, dose3_date=dv_DateAdministered)
+
+## Combining all three dose datasets 
+covid_mig_all <- left_join(covid_mig1, covid_mig2, by="nhs_number")
+covid_mig_all <- left_join(covid_mig_all, covid_mig3, by="nhs_number")
+
+## Deduplicate by id 
+covid_mig_all <- covid_mig_all %>% distinct(id, .keep_all = TRUE)
+
+## Reducing migrant dataset to combine with vaccination
+last_reduced <- last_entry %>% select(exam_date, exam_year_cat, exam_year, nhs_number=nhs, gp_code, visa_type, region_origin=region, id, sex_mm=sex, dob_mm=dob, postcode)
+last_reduced$nhs_number <- as.character(last_reduced$nhs_number)
+
+### Linking demographics with entire Million Migrant cohort
+## Restrict to just those with NHS numbers as denominator
+covid <- left_join(last_reduced, covid_mig_all, by="nhs_number")
+
+## Restrict to just those with NHS numbers as denominator
+covid_nhs <- covid %>% filter(!is.na(nhs_number))
+
+## Cleaning date of vaccination
+# Dose 1
+covid$dose1_date <- as.Date(covid$dose1_date, "%Y-%m-%d")
+summary(covid$dose1_date)
+sum(is.na(covid$dose1_date)) 
+
+# Dose 2
+covid$dose2_date <- as.Date(covid$dose2_date, "%Y-%m-%d")
+summary(covid$dose2_date)
+sum(is.na(covid$dose2_date)) 
+
+# Dose 3
+covid$dose3_date <- as.Date(covid$dose3_date, "%Y-%m-%d")
+summary(covid$dose3_date)
+sum(is.na(covid$dose3_date)) 
+
+## Cleaning sex
+covid$sex[covid$sex=="1"] <- "Male"
+covid$sex[covid$sex=="2"] <- "Female"
+
+summary(as.factor(covid$sex))
+summary(as.factor(covid$sex_mm))
+
+## Age at dose 1 (calculation from dob and dose1 date)
+## Using DoB_Latest as dob from NIMS/PDS
+
+# Change dob into date
+covid$dob <- as.Date(covid$dob, "%Y-%m-%d")
+
+# Creating age from dose 1 date
+covid$age_at_dose1 <- time_length(difftime(covid$dose1_date, covid$dob), "years")
+covid$age_at_dose1[covid$age_at_dose1==0] <- NA
+covid$age_at_dose1 <- round(covid$age_at_dose1)
+summary(covid$age_at_dose1) 
+
+covid <- covid %>%
+  mutate(age_at_dose1_cat=cut(age_at_dose1, breaks=c(0,15,17,29,39,49,54,59,64,69,79,Inf),include.lowest = TRUE, 
+                              labels=c("<16", "16-17","18-29",
+                                       "30-39","40-49","50-54","55-59", "60-64", "65-69","70-79", "80+")))
+
+## Age at start of vaccination; Dec 12 2020
+# Change dob into date
+covid$dob_mm <- as.Date(covid$dob_mm, "%Y-%m-%d")
+
+# Creating age from starting of vaccination campaign
+covid$age_at_vaccine_start <- time_length(difftime("2020-12-12", covid$dob_mm), "years")
+covid$age_at_vaccine_start[covid$age_at_vaccine_start==0] <- NA
+covid$age_at_vaccine_start <- round(covid$age_at_vaccine_start)
+summary(covid$age_at_vaccine_start) 
+
+covid <- covid %>%
+  mutate(age_at_vaccine_start_cat=cut(age_at_vaccine_start, breaks=c(0,15,17,29,39,49,54,59,64,69,79,Inf),include.lowest = TRUE, 
+                              labels=c("<16", "16-17","18-29",
+                                       "30-39","40-49","50-54","55-59", "60-64", "65-69","70-79", "80+")))
+
+## Re-naming ethnicity
+covid$ethnicity <- as.character(covid$ethnicity)
+covid$ethnicity[covid$ethnicity=="A"] <- "British (White)"
+covid$ethnicity[covid$ethnicity=="B"] <- "Irish (White)"
+covid$ethnicity[covid$ethnicity=="C"] <- "Any other White background"
+covid$ethnicity[covid$ethnicity=="D"] <- "White and Black Caribbean (Mixed)"
+covid$ethnicity[covid$ethnicity=="E"] <- "White and Black African (Mixed)"
+covid$ethnicity[covid$ethnicity=="F"] <- "White and Asian (Mixed)"
+covid$ethnicity[covid$ethnicity=="G"] <- "Any other Mixed background"
+covid$ethnicity[covid$ethnicity=="H"] <- "Indian (Asian or Asian British)"
+covid$ethnicity[covid$ethnicity=="J"] <- "Pakistani (Asian or Asian British)"
+covid$ethnicity[covid$ethnicity=="K"] <- "Bangladeshi (Asian or Asian British)"
+covid$ethnicity[covid$ethnicity=="L"] <- "Any other Asian background"
+covid$ethnicity[covid$ethnicity=="M"] <- "Caribbean (Black or Black British)"
+covid$ethnicity[covid$ethnicity=="N"] <- "African (Black or Black British)"
+covid$ethnicity[covid$ethnicity=="P"] <- "Any other Black background"
+covid$ethnicity[covid$ethnicity=="R"] <- "Chinese (other ethnic group)"
+covid$ethnicity[covid$ethnicity=="S"] <- "Any other ethnic group"
+covid$ethnicity[covid$ethnicity=="T"] <- NA
+covid$ethnicity[covid$ethnicity=="W"] <- NA
+
+# Smaller categories to match England in comparison
+covid  <- covid %>% 
+  mutate(ethnicity_cat = case_when(
+    ethnicity %in% c("Caribbean (Black or Black British)", "African (Black or Black British)", "Any other Black background") ~ "Black", 
+    ethnicity %in% c("Indian (Asian or Asian British)", "Pakistani (Asian or Asian British)", "Bangladeshi (Asian or Asian British)") ~ "South Asian",
+    ethnicity %in% c("White and Black Caribbean (Mixed)", "White and Black African (Mixed)", "White and Asian (Mixed)", "Any other Mixed background") ~ "Mixed",
+    ethnicity %in% c("British (White)","Irish (White)", "Any other White background") ~ "White",
+    ethnicity %in% c("Any other ethnic group", "Chinese (other ethnic group)", "Any other Asian background") ~ "Other"))
+
+covid$ethnicity_cat <- as.factor(covid$ethnicity_cat)
+covid$ethnicity_cat <- factor(ifelse(is.na(covid$ethnicity_cat), "Unknown", paste(covid$ethnicity_cat)), levels = c(levels(covid$ethnicity_cat), "Unknown"))
+
+## Combine visa status 
+# Make empty into Unknown, combine government sponsored into other, working holiday maker into work
+covid$visa_type <- as.character(covid$visa_type)
+covid$visa_type[covid$visa_type==""] <- NA
+covid$visa_type[covid$visa_type=="Government Sponsored"] <- "Other"
+covid$visa_type[covid$visa_type=="Working Holiday Maker"] <- "Work"
+covid$visa_type[is.na(covid$visa_type)] <- "Unknown"
+covid$visa_type <- factor(covid$visa_type, levels = c("Students", "Work","Settlement and Dependents", "Family Reunion", "Refugee", "Other", "Unknown"))
+summary(covid$visa_type)
+
+## Cleaning region of origin
+covid$region_origin[covid$region_origin==""] <- "Unknown"
+
+## Splitting postcode into two and then linking into dataset with England regions
+covid <- covid %>%
+  separate(postcode, into = c("postcode", "postcode2"), remove = FALSE)
+
+postcode <- fread("uk_regions_postcode.csv") %>% select(postcode, county = county)
+region <- fread("uk_regions2.csv") 
+
+region <- region %>% 
+  unique()
+
+region <- region %>%
+  unique() %>%
+  group_by(county) %>%
+  mutate(dupe = n() >1)
+
+sum(region$dupe)
+
+dups <- region %>%
+  filter(dupe=="TRUE")
+
+dedup_dups <- dups[!duplicated(dups$county),]
+
+non_dups <- region %>%
+  filter(dupe=="FALSE")
+
+region_final <- bind_rows(non_dups, dedup_dups)
+
+## Any region of UK to dataset
+covid <- left_join(covid, postcode, by="postcode")
+covid <- left_join(covid, region_final, by="county")
+
+summary(as.factor(covid$region))
+
+## Length in country since covid dose 1 
+covid$length <- time_length(difftime(covid$dose1_date, covid$exam_date), "years")
+covid$length <- round(covid$length, digits=1)
+covid$length <- ifelse(covid$length<0, 0, covid$length) #gets rid of neg values
+
+# Calculate quantiles to determine categories
+
+quantile(covid$length, na.rm=TRUE)
+# 0%  25%  50%  75% 100% 
+# 0.0  2.1  4.0  8.0 16.2 
+
+covid$length_cat <- cut(covid$length, breaks=c(0,1.91,3.91,5.91,7.91,Inf), labels=c("<2", "2 to 3", "4 to 5", "6 to 7", ">8"), include.lowest = TRUE)
+summary(covid$length_cat)
+
+## Length of time in country at start of vaccination campaign 
+covid$length_vaccine_start <- time_length(difftime("2020-12-12", covid$exam_date), "years")
+covid$length_vaccine_start <- round(covid$length_vaccine_start, digits=1)
+covid$length_vaccine_start <- ifelse(covid$length_vaccine_start<0, 0, covid$length_vaccine_start) #gets rid of neg values
+covid$length_vaccine_start_cat  <- cut(covid$length_vaccine_start, breaks=c(0,1.91,3.91,5.91,7.91,Inf), labels=c("<2", "2 to 3", "4 to 5", "6 to 7", ">8"), include.lowest = TRUE)
+
+#### ============================================================== ####
+#### SETTING COHORT INCLUSION DATES & TIME SINCE DOSE VARIABLE      ####
+#### ============================================================== ####
+### Excluding any doses before 08/12/2020
+### Excluding any first doses after April 20 2022
+### Deleting any second or third doses after April 20 2022
+
+## Doses before Dec 08 2020 were assumed to be clinical trial participants or to have reported an erroneous date and were excluded from the analysis: n = 554
+covid$dose1 <- as.character(covid$dose1)
+covid$match_rank <- as.character(covid$match_rank)
+
+## Exclude any early first doses 
+covid <- covid %>%
+  mutate(remove_early = case_when(dose1=="1" & dose1_date < "2020-08-12" ~ "out",
+                                  TRUE ~ "in"))
+covid <- covid %>%
+  mutate(dose1 = case_when(remove_early == "out" ~ NA_character_, 
+                           TRUE ~ dose1), 
+         dose1_date = case_when(remove_early == "out" ~ NA_Date_, 
+                                TRUE ~ dose1_date))
+covid <- covid %>% 
+  mutate(match_rank = case_when(remove_early == "out" ~ "0", 
+                                  TRUE ~ match_rank))
+
+## Exclude any doses given after April 20 (in order to match England data which only goes to April 20 2022) - first doses (n = 1867)
+
+covid <- covid %>%
+  mutate(remove = case_when(dose1=="1" & dose1_date > "2022-04-20" ~ "out",
+                            TRUE ~ "in"), 
+         dose1 = case_when(remove == "out" ~ NA_character_, 
+                           TRUE ~ dose1), 
+         dose1_date = case_when(remove == "out" ~ NA_Date_, 
+                                TRUE ~ dose1_date))
+
+covid <- covid %>% 
+  mutate(match_rank = case_when(remove == "out" ~ "0", 
+                                TRUE ~ match_rank))
+
+## No second dose - Y/N
+covid$dose2 <- ifelse(is.na(covid$dose2), "No", "Yes")
+summary(as.factor(covid$dose2))
+
+## No third dose - Y/N
+covid$dose3 <- ifelse(is.na(covid$dose3), "No", "Yes")
+summary(as.factor(covid$dose3))
+
+## Exclude any doses given after April 20 (UK data only to April 20) - second doses
+covid <- covid %>%
+  mutate(remove = case_when(dose2=="Yes" & dose2_date > "2022-04-20" ~ "out",
+                            TRUE ~ "in"),
+         dose2 = case_when(remove == "out" ~ "No",
+                           TRUE ~ dose2),
+         dose2_date = case_when(remove == "out" ~ NA_Date_,
+                                TRUE ~ dose2_date)
+  )
+
+## Exclude any doses given after April 20 (UK data only to April 20) - third doses
+covid <- covid %>%
+  mutate(remove = case_when(dose3=="Yes" & dose3_date > "2022-04-20" ~ "out",
+                            TRUE ~ "in"),
+         dose3 = case_when(remove == "out" ~ "No",
+                           TRUE ~ dose3),
+         dose3_date = case_when(remove == "out" ~ NA_Date_,
+                                TRUE ~ dose3_date)
+  )
+
+
+## Time since first dose, if no second dose 
+covid <- covid %>%
+  mutate(time_since1 = case_when(dose2=="No" ~ difftime("2022-04-20", covid$dose1_date, units="weeks")))
+
+covid$time_since1 <- round(covid$time_since1, digits=1)
+covid$time_since1 <- as.numeric(covid$time_since1)
+covid$time_since1 <- covid$time_since1 / 4
+
+summary(covid$time_since1)
+quantile(covid$time_since1, na.rm = TRUE)
+
+covid$time_since1_cat <- cut(covid$time_since1, breaks=c(0,3,7.0,10.0,12, Inf), labels=c("<3 months", "3-6 months", "7-9 months", "9-12 months", ">12 months"), include.lowest = TRUE)
+summary(covid$time_since1_cat)
+
+time_since <- table(covid$time_since1_cat, covid$age_at_dose1_cat)
+
+
+## Time since second dose, if no third dose
+covid <- covid %>%
+  mutate(time_since2 = case_when(dose3=="No" ~ difftime("2022-04-20", covid$dose2_date, units="weeks")))
+
+covid$time_since2 <- round(covid$time_since2, digits=1)
+covid$time_since2 <- as.numeric(covid$time_since2)
+covid$time_since2 <- covid$time_since2 / 4
+
+summary(covid$time_since2)
+quantile(covid$time_since2, na.rm = TRUE)
+
+covid$time_since2_cat <- cut(covid$time_since2, breaks=c(0,3,7.0,10.0,12, Inf), labels=c("<3 months", "3-6 months", "7-9 months", "9-12 months", ">12 months"), include.lowest = TRUE)
+summary(covid$time_since2_cat)
+
+## Write CSV for covid vaccination linked to first entry - including all match ranks and total dataset
+setwd("//filepor10/datalake$/Y065_HEPrefu_PID/millionmigrants/2_data/vaccination_data")
+fwrite(covid, "covid_migrant_june_06_2022.csv")
+
+
+#### ============================================================== ####
+#### CLEANED AND LINKED COVID VACCINATION DATASET                   ####
+#### ============================================================== ####
+
+covid <- fread("covid_migrant_May_05_2022.csv")
+
+## Restricting to 16 years and older
+
+covid <- covid %>% 
+  filter(age_at_vaccine_start >= 16)
+
+#### By match rank. 
+#### 0 = did not link 
+
+covid$match_rank <- as.character(covid$match_rank)
+covid$match_rank <- ifelse(is.na(covid$match_rank), 0, covid$match_rank)
+summary(as.factor(covid$match_rank))
+
+
+#### ============================================================== ####
+#### TABLE - DEMOGRAPHICS OF WHO LINKED AND WHO DIDN'T IN NIMS      ####
+#### ============================================================== ####
+
+##  Dose 1 demographics 
+# Using age at start of vaccination campaign (age_at_vaccine_start)
+# Length of time in UK since start of vaccination campaign 
+
+covid_tbl_all <- covid %>% 
+  select(sex_mm, age_at_vaccine_start, age_at_vaccine_start_cat, region_origin, visa_type, length_vaccine_start, length_vaccine_start_cat, time_since1_cat, time_since2_cat, match_rank, region) %>%
+  dplyr::mutate(sex_mm = factor(sex_mm) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(age_at_vaccine_start_cat = factor(age_at_vaccine_start_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(region_origin = factor(region_origin) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(visa_type = factor(visa_type) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>% 
+  dplyr::mutate(length_vaccine_start_cat = factor(length_vaccine_start_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(time_since1_cat = factor(time_since1_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(time_since2_cat = factor(time_since2_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(match_rank = factor(match_rank) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+dplyr::mutate(region = factor(region) %>% 
+                forcats::fct_explicit_na(na_level = "Missing")) 
+  
+# Only include match ranks to get row percentages
+covid_tbl_all <- covid_tbl_all %>%
+  filter(match_rank!="0")
+
+covid_linkage <- covid_tbl_all %>%
+  tbl_summary(
+    by = match_rank, percent="row", 
+    statistic = all_continuous() ~ "{median} ({p25}, {p75})",
+    label = c(sex_mm ~ "Sex", age_at_vaccine_start ~ "Age of start of vaccination campagin", age_at_vaccine_start_cat ~ "Age group", 
+              region_origin ~ "Region of origin", visa_type ~ "Entry Visa Type", length_vaccine_start ~ "Length of time in England at start of vaccination campagin", 
+              length_vaccine_start_cat ~ "Length of time in England group", time_since1_cat ~ "Time since dose 1", time_since2_cat ~ "Time since dose 2", region ~ "Region",
+              match_rank ~ "Match Rank"),
+    digits = list(all_categorical() ~ c(0, 1)),
+    missing = "no"
+  ) %>%
+  modify_header(label ~ "**Variable**") %>%
+  modify_footnote(
+    update = all_stat_cols() ~ "Median (IQR) or Frequency (%)"
+  ) %>%
+  modify_caption("COVID-19 Vaccinations in the Milllion Migrant Cohort") %>%
+  bold_labels() %>%
+  modify_spanning_header(c(stat_1, stat_2) ~ "**Matched in Vaccination Dataset**") %>%
+  as_flex_table()
+
+# Save table as a docx
+
+#### ============================================================== ####
+#### TABLE - DEMOGRAPHICS OF WHO LINKED AND WHO DIDN'T IN NIMS      ####
+#### ============================================================== ####
+#### By YES or NO Linked
+
+covid$vaccine <- covid$dose1
+covid$vaccine <- ifelse(is.na(covid$vaccine), 0, covid$vaccine)
+covid$vaccine <- as.character(covid$vaccine)
+covid$vaccine[covid$vaccine==0] <- "Did not link"
+covid$vaccine[covid$vaccine==1] <- "Linked"
+
+covid_tbl_all <- covid %>% 
+  select(sex_mm, age_at_vaccine_start, age_at_vaccine_start_cat, region_origin, visa_type, length_vaccine_start, length_vaccine_start_cat, vaccine, time_since1_cat, time_since2_cat, region) %>%
+  dplyr::mutate(sex_mm = factor(sex_mm) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(age_at_vaccine_start_cat = factor(age_at_vaccine_start_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(region_origin = factor(region_origin) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(visa_type = factor(visa_type) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>% 
+  dplyr::mutate(length_vaccine_start_cat = factor(length_vaccine_start_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(time_since1_cat = factor(time_since1_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(time_since2_cat = factor(time_since2_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(region = factor(region) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(vaccine = factor(vaccine) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) 
+
+covid_linkage <- covid_tbl_all %>%
+  tbl_summary(
+    by = vaccine, percent="row", 
+    statistic = all_continuous() ~ "{median} ({p25}, {p75})",
+    label = c(sex_mm ~ "Sex", age_at_vaccine_start ~ "Age of start of vaccination campagin", age_at_vaccine_start_cat ~ "Age group", 
+              region_origin ~ "Region of origin", visa_type ~ "Entry Visa Type", length_vaccine_start ~ "Length of time in England at start of vaccination campagin", 
+              length_vaccine_start_cat ~ "Length of time in England group", time_since1_cat ~ "Time since dose 1", time_since2_cat ~ "Time since dose 2",
+              vaccine ~ "Linked"),
+    digits = list(all_categorical() ~ c(0, 1)),
+    missing = "no"
+  ) %>%
+  modify_header(label ~ "**Variable**") %>%
+  modify_footnote(
+    update = all_stat_cols() ~ "Median (IQR) or Frequency (%)"
+  ) %>%
+  modify_caption("COVID-19 Vaccinations in the Milllion Migrant Cohort") %>%
+  bold_labels() %>%
+  modify_spanning_header(c(stat_1, stat_2) ~ "**Matched in Vaccination Dataset**") %>%
+  as_flex_table()
+
+# Save table as a docx
+
+#### ============================================================== ####
+#### EXCLUDE MATCH RANK 8 AND FIRST VACCINATIONS AFTER APR 20 2022  ####
+#### ============================================================== ####
+#### Match rank 8 excluded
+
+covid_linked <- covid %>%
+  filter(vaccine=="Linked")
+
+covid_linked <- covid_linked %>%
+  filter(match_rank !="8")
+
+#### ============================================================== ####
+#### TABLE - DEMOGRAPHICS OF VACCINATIONS IN MILLION MIGRANT COHORT ####
+#### ============================================================== ####
+
+# '%notin%' <- Negate(`%in%`)
+# check <- subset(covid_mig1, (nhs_number %notin% covid_linked$nhs_number))
+
+## Making tbl dataset; setting all NAs to factor level 
+
+covid_tbl <- covid_linked %>% 
+  select(sex_mm, age_at_dose1_cat, ethnicity_cat, region_origin, visa_type, dose1, dose2, dose3, length_cat, time_since1_cat, time_since2_cat, region) %>%
+  dplyr::mutate(age_at_dose1_cat = factor(age_at_dose1_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(region_origin = factor(region_origin) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(ethnicity_cat = factor(ethnicity_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(visa_type = factor(visa_type) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>% 
+  dplyr::mutate(length_cat = factor(length_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>% 
+  dplyr::mutate(time_since1_cat = factor(time_since1_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(time_since2_cat = factor(time_since2_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+dplyr::mutate(region= factor(region) %>% 
+                forcats::fct_explicit_na(na_level = "Missing")) 
+
+## Vaccinations by sex, age, region of origin, visa type, dose, and length of time in the UK 
+
+covid_demo <- covid_tbl %>%
+  tbl_summary(
+    statistic = all_continuous() ~ "{median} ({p25}, {p75})",
+    label = c(sex_mm ~ "Sex", age_at_dose1_cat ~ "Age Group", 
+              region_origin ~ "Region of origin", visa_type ~ "Entry Visa Type", ethnicity_cat ~ "Ethnicity",
+              dose1 ~ "Dose 1", dose2 ~ "Dose 2", dose3 ~ "Dose 3",
+              length_cat ~ "Length of time in UK at dose 1", time_since1_cat ~ "Time since dose 1", time_since2_cat ~ "Time since dose 2"),
+    digits = list(all_categorical() ~ c(0, 1)),
+    missing = "no"
+  ) %>%
+  modify_header(label ~ "**Variable**") %>%
+  modify_footnote(
+    update = all_stat_cols() ~ "Median (IQR) or Frequency (%)"
+  ) %>%
+  modify_caption("COVID-19 Vaccinations for the Million Migrant Cohort") %>%
+  bold_labels() %>% 
+  as_flex_table()
+
+# Save table as a docx
+
+#### ============================================================== ####
+#### TABLE - DEMOGRAPHICS OF TOTAL POP IN MILLION MIGRANT COHORT    ####
+#### ============================================================== ####
+
+total <- covid %>% 
+  select(sex_mm, age_at_vaccine_start_cat, ethnicity_cat, region_origin, visa_type, length_vaccine_start_cat, region) %>%
+  dplyr::mutate(age_at_vaccine_start_cat = factor(age_at_vaccine_start_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(region_origin = factor(region_origin) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(ethnicity_cat = factor(ethnicity_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(visa_type = factor(visa_type) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>% 
+  dplyr::mutate(length_vaccine_start_cat = factor(length_vaccine_start_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(region= factor(region) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) 
+
+## Vaccinations by sex, age, region of origin, visa type, dose, and length of time in the UK 
+
+total_cov <- total%>%
+  tbl_summary(
+    statistic = all_continuous() ~ "{median} ({p25}, {p75})",
+    label = c(sex_mm ~ "Sex", age_at_vaccine_start_cat ~ "Age Group", 
+              region_origin ~ "Region of origin", visa_type ~ "Entry Visa Type", ethnicity_cat ~ "Ethnicity",
+              length_vaccine_start_cat~ "Length of time in UK"),
+    digits = list(all_categorical() ~ c(0, 2)),
+    missing = "no"
+  ) %>%
+  modify_header(label ~ "**Variable**") %>%
+  modify_footnote(
+    update = all_stat_cols() ~ "Median (IQR) or Frequency (%)"
+  ) %>%
+  modify_caption("COVID-19 Vaccinations for the Million Migrant Cohort") %>%
+  bold_labels() %>% 
+  as_flex_table()
+
+# Save table as a docx
+
+#### ============================================================== ####
+#### TABLE - DEMOGRAPHICS OF THOSE W/O NHS NUMBERS                  ####
+#### ============================================================== ####
+
+no_nhs <- covid %>%
+  filter(is.na(nhs_number)) %>%
+  filter(age_at_vaccine_start >= 16) %>%
+  select(sex_mm, age_at_vaccine_start_cat, ethnicity_cat, region_origin, visa_type, length_vaccine_start_cat, region) %>%
+  dplyr::mutate(age_at_vaccine_start_cat = factor(age_at_vaccine_start_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(region_origin = factor(region_origin) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(ethnicity_cat = factor(ethnicity_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(visa_type = factor(visa_type) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>% 
+  dplyr::mutate(length_vaccine_start_cat = factor(length_vaccine_start_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(region= factor(region) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) 
+
+## Without NHS by sex, age, region of origin, visa type, dose, and length of time in the UK 
+
+no_nhs_tbl <- no_nhs %>%
+  tbl_summary(
+    statistic = all_continuous() ~ "{median} ({p25}, {p75})",
+    label = c(sex_mm ~ "Sex", age_at_vaccine_start_cat ~ "Age Group", 
+              region_origin ~ "Region of origin", visa_type ~ "Entry Visa Type", ethnicity_cat ~ "Ethnicity",
+              length_vaccine_start_cat~ "Length of time in UK"),
+    digits = list(all_categorical() ~ c(0, 1)),
+    missing = "no"
+  ) %>%
+  modify_header(label ~ "**Variable**") %>%
+  modify_footnote(
+    update = all_stat_cols() ~ "Median (IQR) or Frequency (%)"
+  ) %>%
+  #modify_caption("COVID-19 Vaccinations for the Million Migrant Cohort") %>%
+  bold_labels() %>% 
+  as_flex_table()
+
+# Save table as a docx
+
+
+#### ============================================================== ####
+#### TABLE - DEMOGRAPHICS OF THOSE W/ NHS NUMBERS BUT NO NIMS       ####
+#### ============================================================== ####
+
+no_nims <- covid %>%
+  filter(!is.na(nhs_number)) %>%
+  filter(vaccine=="Did not link") %>%
+  select(sex_mm, age_at_vaccine_start_cat, ethnicity_cat, region_origin, visa_type, length_vaccine_start_cat, region) %>%
+  dplyr::mutate(age_at_vaccine_start_cat = factor(age_at_vaccine_start_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(region_origin = factor(region_origin) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(ethnicity_cat = factor(ethnicity_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(visa_type = factor(visa_type) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>% 
+  dplyr::mutate(length_vaccine_start_cat = factor(length_vaccine_start_cat) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) %>%
+  dplyr::mutate(region= factor(region) %>% 
+                  forcats::fct_explicit_na(na_level = "Missing")) 
+
+## Without NHS by sex, age, region of origin, visa type, dose, and length of time in the UK 
+
+no_nims_tbl <- no_nims %>%
+  tbl_summary(
+    statistic = all_continuous() ~ "{median} ({p25}, {p75})",
+    label = c(sex_mm ~ "Sex", age_at_vaccine_start_cat ~ "Age Group", 
+              region_origin ~ "Region of origin", visa_type ~ "Entry Visa Type", ethnicity_cat ~ "Ethnicity",
+              length_vaccine_start_cat~ "Length of time in UK"),
+    digits = list(all_categorical() ~ c(0, 1)),
+    missing = "no"
+  ) %>%
+  modify_header(label ~ "**Variable**") %>%
+  modify_footnote(
+    update = all_stat_cols() ~ "Median (IQR) or Frequency (%)"
+  ) %>%
+  #modify_caption("COVID-19 Vaccinations for the Million Migrant Cohort") %>%
+  bold_labels() %>% 
+  as_flex_table()
+
+# Save table as a docx
+
+#### ============================================================== ####
+#### CLEANING COVID_LINKED                                          ####
+#### ============================================================== ####
+
+covid$vaccine <- covid$dose1
+covid$vaccine <- ifelse(is.na(covid$vaccine), 0, covid$vaccine)
+covid$vaccine <- as.character(covid$vaccine)
+covid$vaccine[covid$vaccine==0] <- "Did not link"
+covid$vaccine[covid$vaccine==1] <- "Linked"
+
+covid_linked <- covid %>%
+  filter(vaccine=="Linked")
+
+covid_linked <- covid_linked %>%
+  filter(match_rank !="8")
+
+## Region in England
+covid_linked$region[covid_linked$region=="Crown Dependencies"] <- "Other"
+covid_linked$region[covid_linked$region=="Northern Ireland"] <- "Other"
+covid_linked$region[covid_linked$region=="Scotland"] <- "Other"
+covid_linked$region[covid_linked$region=="Wales"] <- "Other"
+covid_linked$region[is.na(covid_linked$region)] <- "Unknown"
+
+covid_linked$region[covid_linked$region=="North East England"] <- "North East"
+covid_linked$region[covid_linked$region=="North West England"] <- "North West"
+covid_linked$region[covid_linked$region=="South East England"] <- "South East"
+covid_linked$region[covid_linked$region=="South West England"] <- "South West"
+
+covid_linked$region_eng <- covid_linked$region
+covid_linked$region_eng[covid_linked$region_eng=="North East"] <- "North East & Yorkshire"
+covid_linked$region_eng[covid_linked$region_eng=="Yorkshire and the Humber"] <- "North East & Yorkshire"
+
+covid_linked$region_eng[covid_linked$region_eng=="West Midlands"] <- "Midlands"
+covid_linked$region_eng[covid_linked$region_eng=="East Midlands"] <- "Midlands"
+
+summary(as.factor(covid_linked$region_eng))
+
+
