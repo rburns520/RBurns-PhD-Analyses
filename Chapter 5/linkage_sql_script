@@ -1,0 +1,496 @@
+/*==============================================================================
+Author:			Sam Dunn (with edits by Rachel Burns)
+Team:			PHDS at UKHSA and (UCL)
+Created date:	06/07/2021 and edits 22/04/2022
+Description:	Link Million Migrant cohort with NIMS COVID-19 vaccination data 
+SQL Server Management Server
+
+================================================================================
+Linkage - 8 step metholodogy 
+================================================================================*/
+-- Drop table if already exsists --
+--------------------------------------------------------------------------------
+IF OBJECT_ID(
+	'[folder1].[dbo].[vaccine_pll_base]'
+) IS NOT NULL DROP TABLE [folder1].[dbo].[vaccine_pll_base]
+--------------------------------------------------------------------------------
+-- create temp pll table to feed into match rank --- cleaning vaccine??? 
+SELECT DISTINCT
+	-- [finalid] as 'id',          -- id
+	CAST(CASE WHEN LEN([NHSNumber]) > 1 AND 
+				  [NHSNumber]<> '9999999999' THEN [NHSNumber] END AS char(10)) AS 'nhs_number' --nhs_number
+, CONVERT(DATE, [DoB_Latest]) AS 'dob' --date of birth
+, Replace([dv_postcode_Latest], ' ', '') AS 'postcode'   --postcode
+, CASE WHEN UPPER([Sex_Latest]) = 'MALE' THEN '1'
+	     WHEN UPPER([Sex_Latest]) = 'FEMALE' THEN '2' 
+		 WHEN UPPER([Sex_Latest]) = 'M' THEN '1'
+	     WHEN UPPER([Sex_Latest]) = 'F' THEN '2' 
+		 WHEN UPPER([Sex_Latest]) = 'NOT SPECIFIED' THEN '9' 
+		 WHEN UPPER([Sex_Latest]) = 'NOT KNOWN' THEN '0'
+		 WHEN UPPER([Sex_Latest]) = 'UNKNOWN' THEN '0'
+		 WHEN UPPER([Sex_Latest]) = 'U' THEN '0'
+		 ELSE [Sex_Latest] END AS 'sex'  --sex
+	     , NULL AS 'communal_establishment_no'
+, dv_ve_dose
+, dv_DateAdministered
+, EthnicCategoryCode_Latest
+INTO [folder1].[dbo].[vaccine_pll_base]
+FROM [folder2].[dbo].[vCOVID19_Vaccinations];
+
+-- DROP TABLE [folder1].[dbo].[vaccine_pll_base] -- making vaccine base but I want to get vaccine dose and date
+--------------------------------------------------------------------------------
+-- Match rank 1 - matching on NHS number, postcode, DOB and sex --
+--------------------------------------------------------------------------------
+PRINT 'Match rank 1'
+-- Reset the comorbid_staging so that it can be used again.
+IF OBJECT_ID(
+	'[folder1].[dbo].[vaccine_staging]'
+) IS NOT NULL DROP TABLE [folder1].[dbo].[vaccine_staging];
+-- Match the vaccine data to the Migrant Linked base PID table by NHS number, postcode, DOB and sex to pull back HES ID.
+SELECT *
+INTO [folder1].[dbo].[vaccine_staging]
+FROM (SELECT DISTINCT main.id, main.nhs_number,	main.dob, main.postcode, main.sex, lk_up.dv_ve_dose,  lk_up.EthnicCategoryCode_Latest,  lk_up.dv_DateAdministered, match_rank = 1
+FROM [folder1].[dbo].[Linked_base] main
+LEFT JOIN [folder1].[dbo].[vaccine_pll_base] lk_up --first pass matching on nhs no, postcode, dob and sex
+ON main.nhs_number =  lk_up.nhs_number
+AND CONVERT(DATE,  main.dob) = lk_up.dob
+AND main.sex =  lk_up.sex
+AND Replace(main.postcode, ' ', '') = TRIM(lk_up.postcode)
+WHERE LEN(main.nhs_number) >= 10
+AND main.dob IS NOT NULL AND main.dob > '01-01-1802'
+AND main.postcode IS NOT NULL 
+AND main.sex IS NOT NULL) a
+WHERE dv_ve_dose IS NOT NULL;
+
+-- Drop the mort_disp_linked table (in case previously not dropped) and add the contents of the mort_disp_staging into it.
+IF OBJECT_ID(
+	'[folder1].[dbo].[vaccine_linked]'
+) IS NOT NULL DROP TABLE [folder1].[dbo].[vaccine_linked]
+
+SELECT * 
+INTO [folder1].[dbo].[vaccine_linked]
+FROM [folder1].[dbo].[vaccine_staging];
+
+--------------------------------------------------------------------------------
+-- Match rank 2 - matching on NHS number, DOB and sex --
+--------------------------------------------------------------------------------
+PRINT 'Match rank 2'
+-- Reset the mort_disp_staging so that it can be used again.
+IF OBJECT_ID(
+	'[folder1].[dbo].[vaccine_staging]'
+) IS NOT NULL DROP TABLE [folder1].[dbo].[vaccine_staging];
+
+-- Match the gpes data to the HES PID table by NHS number, DOB and sex.
+SELECT *
+INTO [folder1].[dbo].[vaccine_staging]
+FROM
+(SELECT DISTINCT main.id, main.nhs_number,	main.dob, main.postcode, main.sex, lk_up.dv_ve_dose,  lk_up.EthnicCategoryCode_Latest, lk_up.dv_DateAdministered,	match_rank = 2
+FROM (SELECT main.id, main.nhs_number,	main.dob, main.postcode, main.sex
+FROM [folder1].[dbo].[Linked_base]  main
+LEFT JOIN [folder1].[dbo].[vaccine_linked] pass
+ON main.id = pass.id
+WHERE pass.id IS NULL) main
+LEFT JOIN [folder1].[dbo].[vaccine_pll_base]  lk_up
+ON main.nhs_number =  lk_up.nhs_number
+AND CONVERT(DATE,  main.dob) = lk_up.dob
+AND main.sex =  lk_up.sex
+WHERE LEN(main.nhs_number) >= 10
+AND main.dob IS NOT NULL AND main.dob > '01-01-1802'
+AND main.sex IS NOT NULL) a
+WHERE dv_ve_dose IS NOT NULL;
+
+-- Add the contents of the mort_disp_staging into the mort_disp_linked table.
+INSERT INTO [folder1].[dbo].[vaccine_linked]
+SELECT * 
+FROM [folder1].[dbo].[vaccine_staging];
+--------------------------------------------------------------------------------
+-- Match rank 3 - matching on NHS number, postcode, sex and partial DOB --
+--------------------------------------------------------------------------------
+PRINT 'Match rank 3'
+-- Reset the mort_disp_staging so that it can be used again.
+IF OBJECT_ID(
+	'[folder1].[dbo].[vaccine_staging]'
+) IS NOT NULL DROP TABLE [folder1].[dbo].[vaccine_staging];
+
+-- Match the gpes data to the HES PID table by NHS number, postcode, sex and partial DOB.
+SELECT *
+INTO [folder1].[dbo].[vaccine_staging]
+FROM
+(SELECT DISTINCT main.id, main.nhs_number,	main.dob, main.postcode, main.sex, lk_up.dv_ve_dose, lk_up.EthnicCategoryCode_Latest, lk_up.dv_DateAdministered, match_rank = 3
+FROM (SELECT main.id, main.nhs_number,	main.dob, main.postcode, main.sex, main.Communal_establishment_no
+FROM [folder1].[dbo].[Linked_base] main
+LEFT JOIN [folder1].[dbo].[vaccine_linked] pass
+ON main.id = pass.id
+WHERE pass.id IS NULL) main
+LEFT JOIN [folder1].[dbo].[vaccine_pll_base] lk_up
+ON main.nhs_number =  lk_up.nhs_number AND (
+lk_up.dob NOT IN ('1901-01-01', '1899-12-31')
+AND CONVERT(date,  main.dob) NOT IN ('1901-01-01', '1899-12-31')
+AND ABS(DATEDIFF(DAY, lk_up.dob, CONVERT(date, main.dob))) <= (365.25 * 14)
+AND (lk_up.dob = CONVERT(date,  main.dob) 
+OR (YEAR(lk_up.dob) = YEAR(CONVERT(date,  main.dob)) AND MONTH(lk_up.dob) = MONTH(CONVERT(date,  main.dob)))
+OR (YEAR(lk_up.dob) = YEAR(CONVERT(date,  main.dob)) AND DAY(lk_up.dob) = DAY(CONVERT(date,  main.dob)))
+OR (MONTH(lk_up.dob) = MONTH(CONVERT(date,  main.dob)) AND DAY(lk_up.dob) = DAY(CONVERT(date,  main.dob))) 
+OR ((YEAR(lk_up.dob) = YEAR(CONVERT(date,  main.dob)) AND MONTH(lk_up.dob) = DAY(CONVERT(date,  main.dob)))
+OR (YEAR(lk_up.dob) = YEAR(CONVERT(date,  main.dob)) AND DAY(lk_up.dob) = MONTH(CONVERT(date,  main.dob)))
+OR (MONTH(lk_up.dob) = DAY(CONVERT(date,  main.dob)) AND DAY(lk_up.dob) = MONTH(CONVERT(date,  main.dob))))))
+AND REPLACE(main.postcode, ' ', '') = TRIM(lk_up.postcode)
+AND main.sex =  lk_up.sex
+WHERE LEN(main.nhs_number) >= 10
+AND main.dob IS NOT NULL AND main.dob > '01-01-1802' 	
+AND main.postcode IS NOT NULL
+AND main.sex IS NOT NULL) a
+WHERE dv_ve_dose IS NOT NULL;
+
+-- Add the contents of the mort_disp_staging into the mort_disp_linked table.
+INSERT INTO [folder1].[dbo].[vaccine_linked]
+SELECT * 
+FROM [folder1].[dbo].[vaccine_staging];
+
+
+--------------------------------------------------------------------------------
+-- Match rank 4 - matching on NHS number, sex and partial DOB --
+--------------------------------------------------------------------------------
+PRINT 'Match rank 4'
+-- Reset the mort_disp_staging so that it can be used again.
+IF OBJECT_ID(
+	'[folder1].[dbo].[vaccine_staging]'
+) IS NOT NULL DROP TABLE [folder1].[dbo].[vaccine_staging];
+
+-- Match the gpes data to the HES PID table by NHS number, sex and partial DOB.
+SELECT *
+INTO [folder1].[dbo].[vaccine_staging]
+FROM
+(SELECT DISTINCT main.id, main.nhs_number,	main.dob, main.postcode, main.sex, lk_up.dv_ve_dose,  lk_up.EthnicCategoryCode_Latest, lk_up.dv_DateAdministered, match_rank = 4
+FROM (SELECT main.id, main.nhs_number,	main.dob, main.postcode, main.sex, main.Communal_establishment_no
+FROM [folder1].[dbo].[Linked_base] main
+LEFT JOIN [folder1].[dbo].[vaccine_linked] pass
+ON main.id = pass.id
+WHERE pass.id IS NULL) main
+LEFT JOIN [folder1].[dbo].[vaccine_pll_base] lk_up
+ON main.nhs_number =  lk_up.nhs_number AND (
+lk_up.dob NOT IN ('1901-01-01', '1899-12-31')
+AND CONVERT(date,  main.dob) NOT IN ('1901-01-01', '1899-12-31')
+AND ABS(DATEDIFF(DAY, lk_up.dob, CONVERT(date, main.dob))) <= (365.25 * 14)
+AND (lk_up.dob = CONVERT(date,  main.dob) 
+OR (YEAR(lk_up.dob) = YEAR(CONVERT(date,  main.dob)) AND MONTH(lk_up.dob) = MONTH(CONVERT(date,  main.dob)))
+OR (YEAR(lk_up.dob) = YEAR(CONVERT(date,  main.dob)) AND DAY(lk_up.dob) = DAY(CONVERT(date,  main.dob)))
+OR (MONTH(lk_up.dob) = MONTH(CONVERT(date,  main.dob)) AND DAY(lk_up.dob) = DAY(CONVERT(date,  main.dob))) 
+OR ((YEAR(lk_up.dob) = YEAR(CONVERT(date,  main.dob)) AND MONTH(lk_up.dob) = DAY(CONVERT(date,  main.dob)))
+OR (YEAR(lk_up.dob) = YEAR(CONVERT(date,  main.dob)) AND DAY(lk_up.dob) = MONTH(CONVERT(date,  main.dob)))
+OR (MONTH(lk_up.dob) = DAY(CONVERT(date,  main.dob)) AND DAY(lk_up.dob) = MONTH(CONVERT(date,  main.dob))))))
+AND main.sex =  lk_up.sex
+WHERE LEN(main.nhs_number) >= 10
+AND main.dob IS NOT NULL AND main.dob > '01-01-1802'	
+AND main.sex IS NOT NULL) a
+WHERE dv_ve_dose IS NOT NULL;
+
+-- Add the contents of the mort_disp_staging into the mort_disp_linked table.
+INSERT INTO [folder1].[dbo].[vaccine_linked]
+SELECT * 
+FROM [folder1].[dbo].[vaccine_staging];
+
+--------------------------------------------------------------------------------
+-- Match rank 5 - matching on NHS number and postcode --
+--------------------------------------------------------------------------------
+PRINT 'Match rank 5'
+-- Reset the mort_disp_staging so that it can be used again.
+IF OBJECT_ID(
+	'[folder1].[dbo].[vaccine_staging]'
+) IS NOT NULL DROP TABLE [folder1].[dbo].[vaccine_staging];
+
+-- Match the gpes data to the HES PID table by NHS number and postcode
+SELECT *
+INTO [folder1].[dbo].[vaccine_staging]
+FROM
+(SELECT DISTINCT main.id, main.nhs_number,	main.dob, main.postcode, main.sex, lk_up.dv_ve_dose,  lk_up.EthnicCategoryCode_Latest, lk_up.dv_DateAdministered, match_rank = 5
+FROM (SELECT main.id, main.nhs_number,	main.dob, main.postcode, main.sex, main.Communal_establishment_no
+FROM [folder1].[dbo].[Linked_base] main
+LEFT JOIN [folder1].[dbo].[vaccine_linked] pass
+ON main.id = pass.id
+WHERE pass.id IS NULL) main
+LEFT JOIN [folder1].[dbo].[vaccine_pll_base] lk_up
+ON main.nhs_number =  lk_up.nhs_number
+AND REPLACE(main.postcode, ' ', '') = TRIM(lk_up.postcode)
+WHERE LEN(main.nhs_number) >= 10
+AND main.postcode IS NOT NULL) a
+WHERE dv_ve_dose IS NOT NULL;
+
+-- Add the contents of the mort_disp_staging into the mort_disp_linked table.
+INSERT INTO [folder1].[dbo].[vaccine_linked]
+SELECT * 
+FROM [folder1].[dbo].[vaccine_staging];
+--------------------------------------------------------------------------------
+-- Match rank 6 - matching on DOB, sex and postcode with exceptions --
+--------------------------------------------------------------------------------
+PRINT 'Match rank 6'
+-- Reset the mort_disp_staging so that it can be used again.
+IF OBJECT_ID(
+	'[folder1].[dbo].[vaccine_staging]'
+) IS NOT NULL DROP TABLE [folder1].[dbo].[vaccine_staging];
+
+/* Match the gpes data to the HES PID table by DOB, sex and postcode, where 
+NHS number does not contradict the match and DOB is not 1 January and the 
+postcode is not in the ignore list.*/
+SELECT *
+INTO [folder1].[dbo].[vaccine_staging]
+FROM
+(SELECT DISTINCT main.id, main.nhs_number,	main.dob, main.postcode, main.sex, lk_up.dv_ve_dose,  lk_up.EthnicCategoryCode_Latest, lk_up.dv_DateAdministered, match_rank = 6
+FROM (SELECT main.id, main.nhs_number,	main.dob, main.postcode, main.sex, main.Communal_establishment_no
+FROM [folder1].[dbo].[Linked_base] main
+LEFT JOIN [folder1].[dbo].[vaccine_linked]pass
+ON main.id = pass.id
+WHERE pass.id IS NULL) main
+LEFT JOIN [folder1].[dbo].[vBirthsDeaths] com_Est 
+ON com_Est.entitycode  = main.[communal_establishment_no] 
+LEFT JOIN [folder1].[dbo].[vaccine_pll_base] lk_up
+ON REPLACE(main.postcode, ' ', '') = TRIM(lk_up.postcode)
+AND CONVERT(DATE, main.dob) = lk_up.dob
+AND main.sex =  lk_up.sex
+WHERE ((NOT(MONTH(lk_up.dob) = 1 AND DAY(lk_up.dob) = 1) and main.dob IS NOT NULL AND main.dob > '01-01-1802'))
+AND (com_Est.[entitycode] IS NULL 
+OR (com_Est.[entitycode] IS NOT NULL AND lk_up.dv_DateAdministered > CONVERT(DATE, com_Est.DATECLOSED)) -- not sure about this?? 
+OR (com_Est.[entitycode] IS NOT NULL AND lk_up.dv_DateAdministered <= CONVERT(DATE, com_Est.DATEOPENED)))
+AND (main.nhs_number IS NULL OR  main.nhs_number = '' OR  LEN(main.nhs_number) < 10 
+OR main.nhs_number LIKE '&+&'
+OR main.nhs_number = '0000000000'
+OR main.nhs_number = '000 000 00'
+OR main.nhs_number = '.'
+OR lk_up.nhs_number IS NULL
+OR lk_up.nhs_number = ''
+OR LEN(lk_up.nhs_number) < 10
+OR lk_up.nhs_number LIKE '&+&'
+OR lk_up.nhs_number = '0000000000'
+OR lk_up.nhs_number = '000 000 00'
+OR lk_up.nhs_number = '.')) a
+WHERE dv_ve_dose  IS NOT NULL;
+
+-- Add the contents of the mort_disp_staging into the mort_disp_linked table.
+INSERT INTO [folder1].[dbo].[vaccine_linked]
+SELECT * 
+FROM [folder1].[dbo].[vaccine_staging];
+--------------------------------------------------------------------------------
+-- Match rank 7 - exact match on DOB, sex and postcode with exceptions --
+--------------------------------------------------------------------------------
+PRINT 'Match rank 7'
+-- Reset the mort_disp_staging so that it can be used again.
+IF OBJECT_ID(
+	'[folder1].[dbo].[vaccine_staging]'
+) IS NOT NULL DROP TABLE [folder1].[dbo].[vaccine_staging];
+/*Match the gpes data to the HES PID table by DOB, sex and postcode, where NHS 
+number does not contradict the match and DOB is not 1 January.*/
+SELECT *
+INTO [folder1].[dbo].[vaccine_staging]
+FROM
+(SELECT DISTINCT main.id, main.nhs_number,	main.dob, main.postcode, main.sex, lk_up.dv_ve_dose,  lk_up.EthnicCategoryCode_Latest, lk_up.dv_DateAdministered, match_rank = 7
+FROM (SELECT main.id, main.nhs_number,	main.dob, main.postcode, main.sex, main.Communal_establishment_no
+FROM [folder1].[dbo].[Linked_base] main
+LEFT JOIN [folder1].[dbo].[vaccine_linked]pass
+ON main.id = pass.id
+WHERE pass.id IS NULL) main
+LEFT JOIN [folder1].[dbo].[vBirthsDeaths] com_Est 
+ON com_Est.entitycode  = main.[communal_establishment_no] 
+LEFT JOIN [folder1].[dbo].[vaccine_pll_base] lk_up
+ON REPLACE(main.postcode, ' ', '') = TRIM(lk_up.postcode)
+AND CONVERT(DATE,  main.dob) = lk_up.dob
+AND main.sex =  lk_up.sex
+WHERE ((NOT(MONTH(lk_up.dob) = 1 AND DAY(lk_up.dob) = 1) AND main.dob IS NOT NULL AND main.dob > '01-01-1802'))
+AND (main.nhs_number IS NULL
+OR main.nhs_number = ''
+OR LEN(main.NHS_number) < 10
+OR main.nhs_number LIKE '&+&'
+OR main.nhs_number = '0000000000'
+OR main.nhs_number = '000 000 00'
+OR main.nhs_number = '.'
+OR lk_up.nhs_number IS NULL
+OR lk_up.nhs_number = ''
+OR LEN(lk_up.nhs_number) < 10
+OR lk_up.nhs_number LIKE '&+&'
+OR lk_up.nhs_number = '0000000000'
+OR lk_up.nhs_number = '000 000 00'
+OR lk_up.nhs_number = '.')) a
+WHERE dv_ve_dose  IS NOT NULL;
+
+-- Add the contents of the mort_disp_staging into the mort_disp_linked table.
+INSERT INTO [folder1].[dbo].[vaccine_linked]
+SELECT * 
+FROM [folder1].[dbo].[vaccine_staging];
+
+--------------------------------------------------------------------------------
+-- Match rank 8 - exact match on DOB, sex and postcode with exceptions --
+--------------------------------------------------------------------------------
+PRINT 'Match rank 8'
+-- Reset the mort_disp_staging so that it can be used again.
+IF OBJECT_ID(
+	'[folder1].[dbo].[vaccine_staging]'
+) IS NOT NULL DROP TABLE [folder1].[dbo].[vaccine_staging];
+-- Match the gpes data to the HES PID table by DOB, sex and postcode, where DOB is not 1 January.
+SELECT *
+INTO [folder1].[dbo].[vaccine_staging]
+FROM
+(SELECT DISTINCT main.id, main.nhs_number,	main.dob, main.postcode, main.sex, lk_up.dv_ve_dose,  lk_up.EthnicCategoryCode_Latest, lk_up.dv_DateAdministered, match_rank = 8
+FROM (SELECT main.id, main.nhs_number,	main.dob, main.postcode, main.sex, main.Communal_establishment_no
+FROM [folder1].[dbo].[Linked_base] main
+LEFT JOIN [folder1].[dbo].[vaccine_linked]pass
+ON main.id = pass.id
+WHERE pass.id IS NULL) main
+LEFT JOIN [folder1].[dbo].[vBirthsDeaths] com_Est 
+ON com_Est.entitycode  = main.[communal_establishment_no] 
+LEFT JOIN [folder1].[dbo].[vaccine_pll_base] lk_up
+ON REPLACE(main.postcode, ' ', '') = TRIM(lk_up.postcode)
+AND CONVERT(DATE, main.dob) = lk_up.dob
+AND main.sex =  lk_up.sex
+where ((NOT(MONTH(lk_up.dob) = 1 AND DAY(lk_up.dob) = 1) and main.dob IS NOT NULL AND main.dob > '01-01-1802'))) a;
+
+-- Add the contents of the mort_disp_staging into the mort_disp_linked table.
+INSERT INTO [folder1].[dbo].[vaccine_linked]
+SELECT * 
+FROM [folder1].[dbo].[vaccine_staging];
+--------------------------------------------------------------------------------
+-- check counts
+--------------------------------------------------------------------------------
+-- Check counts in the final Eth_linked_pll table.
+SELECT 'Eth_linked_pll', COUNT(*)
+FROM [folder1].[dbo].[vaccine_linked];
+
+--------------------------------------------------------------------------------
+-- drop tables for duplicate checks
+--------------------------------------------------------------------------------
+IF OBJECT_ID('[folder1].[dbo].[vaccine_linked_distinct]') IS NOT NULL 
+DROP TABLE [folder1].[dbo].[vaccine_linked_distinct];
+
+IF OBJECT_ID('[folder1].[dbo].[vaccine_linked_first_dose]') IS NOT NULL 
+DROP TABLE [folder1].[dbo].[vaccine_linked_first_dose];
+
+IF OBJECT_ID('[folder3].[dbo].[comorbid_linked_pll_duplicates_pass]') IS NOT NULL 
+DROP TABLE [folder2].[dbo].[comorbid_linked_pll_duplicates_pass];
+
+ALTER TABLE [folder1].[dbo].[vaccine_linked]
+DROP COLUMN dose2_date;
+--------------------------------------------------------------------------------
+-- filter by first dose of vaccine - create new variable if dose = 1 (to still have info on other doses) 
+--------------------------------------------------------------------------------
+-- Dose 1 variable
+ALTER TABLE [folder1].[dbo].[vaccine_linked]
+ADD dose1 varchar(50);
+
+UPDATE [folder1].[dbo].[vaccine_linked] SET
+dose1 = CASE WHEN dv_ve_dose = 1 THEN '1'
+       ELSE 'NA' END 
+FROM [folder1].[dbo].[vaccine_linked]
+
+-- Dose 2 variable
+ALTER TABLE [folder1].[dbo].[vaccine_linked]
+ADD dose2 varchar(50);
+
+UPDATE [folder1].[dbo].[vaccine_linked] SET
+dose2 = CASE WHEN dv_ve_dose = 2 THEN '2'
+       ELSE 'NA' END 
+FROM [folder1].[dbo].[vaccine_linked]
+
+-- Dose 2 date
+ALTER TABLE [folder1].[dbo].[vaccine_linked]
+ADD dose2_date date;
+
+UPDATE [folder1].[dbo].[vaccine_linked] SET
+dose2_date = CASE WHEN dv_ve_dose = 2 THEN dv_DateAdministered
+       ELSE NULL END 
+FROM [folder1].[dbo].[vaccine_linked]
+
+-- Dose 3 variable
+ALTER TABLE [folder1].[dbo].[vaccine_linked]
+ADD dose3 varchar(50);
+
+UPDATE [folder1].[dbo].[vaccine_linked] SET
+dose3 = CASE WHEN dv_ve_dose = 3 THEN '3'
+       ELSE 'NA' END 
+FROM [folder1].[dbo].[vaccine_linked]
+
+-- Dose 3 date
+ALTER TABLE [folder1].[dbo].[vaccine_linked]
+ADD dose3_date date;
+
+UPDATE [folder1].[dbo].[vaccine_linked] SET
+dose3_date = CASE WHEN dv_ve_dose = 3 THEN dv_DateAdministered
+       ELSE 'NA' END 
+FROM [folder1].[dbo].[vaccine_linked]
+
+-- Select only those with dose 1 (should retain infor on dose 2 and 3)
+SELECT *
+INTO [folder1].[dbo].[vaccine_linked_first_dose]
+FROM [folder1].[dbo].[vaccine_linked] a
+WHERE a.dose1 = '1'
+
+--------------------------------------------------------------------------------
+-- check for duplicates
+--------------------------------------------------------------------------------
+PRINT 'Duplicates check'
+PRINT 'Distinct counts'
+-- Create a table which contains only HES ID ethnicity for each ID.
+SELECT a.[id], [nhs_number], [dob], [postcode], [sex], [dv_ve_dose], [dv_DateAdministered], match_rank
+INTO [folder1].[dbo].[vaccine_linked_distinct]
+FROM [folder1].[dbo].[vaccine_linked_first_dose] a LEFT OUTER JOIN
+(SELECT [id], 'Remove' as RemoveField
+FROM [folder1].[dbo].[vaccine_linked_first_dose]
+GROUP BY [id] HAVING COUNT(*) > 1) b ON a.[id] = b.[id]
+WHERE RemoveField IS NULL;
+
+
+--------------------------------------------------------------------------------
+-- those with more than one record
+--------------------------------------------------------------------------------
+PRINT 'Duplicate records'
+-- Create a table which contains the IDs which have more than one record assigned to them. 
+SELECT DISTINCT a.id, dv_ve_dose
+INTO [folder1].[dbo].[vaccine_linked_duplicates]
+FROM [folder1].[dbo].[vaccine_linked_first_dose] a INNER JOIN 
+(SELECT [id]
+FROM [folder1].[dbo].[vaccine_linked_first_dose]
+GROUP BY [id] HAVING COUNT(*) > 1) b ON a.id = b.[id];
+
+
+--------------------------------------------------------------------------------
+-- Highest priority match
+--------------------------------------------------------------------------------
+
+ALTER TABLE [folder1].[dbo].[vaccine_linked_first_dose]
+ADD highest_priority INT;
+
+----to include null priority and order dates I'm setting to a high/low number in preparation for the
+----rank calculation otherwise it excludes the nulls from being given a priority
+
+ UPDATE [folder1].[dbo].[vaccine_linked_first_dose]
+   SET match_rank = '99'
+ WHERE match_rank is null;
+
+
+----used https://stackoverflow.com/questions/28625110/sql-update-in-a-select-rank-over-partition-sentence
+----inorder to apply the ranking
+
+MERGE INTO [folder1].[dbo].[vaccine_linked_first_dose] t USING
+(SELECT [id]
+      ,[match_rank],
+    RANK() OVER (PARTITION BY [id] ORDER BY match_rank ASC) AS highest_priority
+FROM [folder1].[dbo].[vaccine_linked_first_dose]
+GROUP BY [id],
+    match_rank
+) s 
+ON (t.[id] = s.[id]
+AND t.match_rank = s.match_rank) 
+WHEN MATCHED THEN
+  UPDATE SET t.highest_priority = s.highest_priority;
+
+
+   --select highest priority
+IF OBJECT_ID(
+'[folder1].[dbo].[vaccine_linked_highest_priority]'
+) IS NOT NULL DROP TABLE [folder1].[dbo].[vaccine_linked_highest_priority]; 
+
+SELECT       distinct id, nhs_number, dob, postcode, sex, match_rank, dv_DateAdministered, highest_priority
+INTO [folder1].[dbo].[vaccine_linked_highest_priority]
+FROM            folder1.dbo.vaccine_linked_first_dose
+WHERE        (highest_priority = '1')
+
+
+
+
