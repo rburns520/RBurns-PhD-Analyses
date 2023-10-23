@@ -6,7 +6,7 @@
 # 1. Second dose delayed for those with a second dose
 # 2. Third dose delayed for those with a second dose
 #### ============================================================== ####
-#### Comparing Million Migrant cohort to OpenSafetly cohort (see data folder for relevant data from OpenSAFELY)
+#### Comparing Million Migrant cohort to OpenSafetly cohort (where possible)
 
 ### LOAD PACKAGES 
 
@@ -178,465 +178,6 @@ delay_two_plot_eth <- ggplot(data = delay_ci, aes(x=ethnicity_cat, y=delay_prop,
 ggsave("delayed_second_mig_eth.jpeg", width = 45, height = 25, dpi = 450, units = "cm")
 
 #### ============================================================== ####
-#### PLOT SECOND DOSE DELAYED, MIGRANT & ENGLAND BY AGE & VISA TYPE ####
-#### ============================================================== ####
-
-## Reduce dataset 
-dose_two <- dose_two %>% select(age_at_dose1_cat, visa_type, delay)
-
-visa.lvls <- levels(as.factor(dose_two$visa_type))
-
-## 18-29 age group
-# Migrant group
-group1 <- dose_two %>%
-  filter(age_at_dose1_cat=="18-29") %>%
-  group_by(visa_type, delay) %>%
-  summarise(value = n ())
-
-group1.out <- tibble()
-for(i in 1:length(visa.lvls)){
-  x <- group1 %>% 
-    ungroup() %>%
-    filter(visa_type== visa.lvls[i]) %>%
-    mutate(prop = (100* value/sum(value)))
-  group1.out <- rbind(group1.out,x)
-}
-
-## 30-39 age group
-# Migrant group
-group2 <- dose_two %>%
-  filter(age_at_dose1_cat=="30-39") %>%
-  group_by(visa_type, delay) %>%
-  summarise(value = n ())
-
-group2.out <- tibble()
-for(i in 1:length(visa.lvls)){
-  x <- group2 %>% 
-    ungroup() %>%
-    filter(visa_type== visa.lvls[i]) %>%
-    mutate(prop = (100* value/sum(value)))
-  group2.out <- rbind(group2.out,x)
-}
-
-## 40-49 age group
-# Migrant group
-group3 <- dose_two %>%
-  filter(age_at_dose1_cat=="40-49") %>%
-  group_by(visa_type, delay) %>%
-  summarise(value = n ())
-
-group3.out <- tibble()
-for(i in 1:length(visa.lvls)){
-  x <- group3 %>% 
-    ungroup() %>%
-    filter(visa_type== visa.lvls[i]) %>%
-    mutate(prop = (100* value/sum(value)))
-  group3.out <- rbind(group3.out,x)
-}
-
-## 50-54 age group
-# Migrant group
-group4 <- dose_two %>%
-  filter(age_at_dose1_cat=="50-54") %>%
-  group_by(visa_type, delay) %>%
-  summarise(value = n ())
-
-group4.out <- tibble()
-for(i in 1:length(visa.lvls)){
-  x <- group4 %>% 
-    ungroup() %>%
-    filter(visa_type== visa.lvls[i]) %>%
-    mutate(prop = (100* value/sum(value)))
-  group4.out <- rbind(group4.out,x)
-}
-
-## 55-59 age group
-# Migrant group
-group5 <- dose_two %>%
-  filter(age_at_dose1_cat=="55-59") %>%
-  group_by(visa_type, delay) %>%
-  summarise(value = n ())
-
-group5.out <- tibble()
-for(i in 1:length(visa.lvls)){
-  x <- group5 %>% 
-    ungroup() %>%
-    filter(visa_type== visa.lvls[i]) %>%
-    mutate(prop = (100* value/sum(value)))
-  group5.out <- rbind(group5.out,x)
-}
-
-## 60-64 age group
-# Migrant group
-group6 <- dose_two %>%
-  filter(age_at_dose1_cat=="60-64") %>%
-  group_by(visa_type, delay) %>%
-  summarise(value = n ())
-
-group6.out <- tibble()
-for(i in 1:length(visa.lvls)){
-  x <- group6 %>% 
-    ungroup() %>%
-    filter(visa_type== visa.lvls[i]) %>%
-    mutate(prop = (100* value/sum(value)))
-  group6.out <- rbind(group6.out,x)
-}
-
-## 65-69 age group
-# Migrant group
-group7 <- dose_two %>%
-  filter(age_at_dose1_cat=="65-69") %>%
-  group_by(visa_type, delay) %>%
-  summarise(value = n ())
-
-group7.out <- tibble()
-for(i in 1:length(visa.lvls)){
-  x <- group7 %>% 
-    ungroup() %>%
-    filter(visa_type== visa.lvls[i]) %>%
-    mutate(prop = (100* value/sum(value)))
-  group7.out <- rbind(group7.out,x)
-}
-
-## 70-79 age group
-# Migrant group
-group8 <- dose_two %>%
-  filter(age_at_dose1_cat=="70-79") %>%
-  group_by(visa_type, delay) %>%
-  summarise(value = n ())
-
-group8.out <- tibble()
-for(i in 1:length(visa.lvls)){
-  x <- group8 %>% 
-    ungroup() %>%
-    filter(visa_type== visa.lvls[i]) %>%
-    mutate(prop = (100* value/sum(value)))
-  group8.out <- rbind(group8.out,x)
-}
-
-## 80+ age group
-# Migrant group
-group9 <- dose_two %>%
-  filter(age_at_dose1_cat=="80+") %>%
-  group_by(visa_type, delay) %>%
-  summarise(value = n ())
-
-group9.out <- tibble()
-for(i in 1:length(visa.lvls)){
-  x <- group9 %>% 
-    ungroup() %>%
-    filter(visa_type== visa.lvls[i]) %>%
-    mutate(prop = (100* value/sum(value)))
-  group9.out <- rbind(group9.out,x)
-}
-
-## Combine all first FOUR groups together
-
-combine <- bind_rows(list('18-29' = group1.out, '30-39' = group2.out, '40-49' = group3.out, '50-54' = group4.out, 
-                          '55-59' = group5.out, '60-64' = group6.out, '65-69' = group7.out, '70-79' = group8.out,
-                          '80+' = group9.out), .id = "age_group")
-
-# Delayed dose two by migrant age group 
-combine <- combine %>%
-  group_by(age_group, visa_type) %>%
-  mutate(dose_delay = sum(value)) 
-
-# Filter to just those who are DEALYED (1)
-combine <- combine %>% 
-  filter(delay==1)
-
-## Took out those less than 10 
-combine  <- combine %>%
-  filter(value > 10)
-
-# Rename value as delayed
-combine <- combine %>%
-  rename(delayed = value)
-
-# combine second dose 
-combine_2dose <- combine
-
-## Combine Migrant and England 
-
-combine_all_visa <- bind_rows(list('Second Dose'= combine_2dose, 'Third Dose' = combine_3dose), .id = "Dose")
-
-
-# Adding CI to each point estimate
-ci <- binconf(combine_all_visa$delayed, combine_all_visa$dose_delay, alpha=0.05, 
-              method="exact", 
-              include.x=FALSE, include.n =FALSE, return.df=TRUE)
-
-combine_ci <- cbind(combine_all_visa, ci)
-combine_ci <- combine_ci %>%
-  mutate(upper = 100*Upper) %>%
-  mutate(lower = 100*Lower)
-
-combine_ci$visa_type <- as.character(combine_ci$visa_type)
-combine_ci$visa_type[combine_ci$visa_type=="Settlement and Dependents"] <- "Settlement"
-combine_ci$visa_type[combine_ci$visa_type=="Family Reunion"] <- "Family"
-
-combine_ci$visa_type <- as.factor(combine_ci$visa_type)
-
-combine_ci <- combine_ci %>%
-  mutate(visa_type = fct_relevel(visa_type, c("Students", "Work", "Settlement", "Family", "Refugee", "Other")))
-
-dose2 <- "#0072B2"
-dose3 <- "#009E73"
-
-## Plot of proportion of each age group by visa status 
-group1.plot <- ggplot(combine_ci %>% filter(age_group %in% c("18-29", "30-39", "40-49", "50-54", "55-59", "60-64", "65-69", "70-79", "80+")), aes(x=visa_type, y=prop, fill = Dose))+
-  geom_bar(stat= "identity", position = "dodge", width=0.5) +
-  geom_errorbar( aes(x=visa_type, ymin=lower, ymax=upper), colour="black", width=0.5, size=0.8, position = position_dodge()) +
-  #scale_fill_manual(values =c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00")) +
-  scale_fill_manual("Dose", limits=c("Second Dose", "Third Dose"), values = c("#0072B2", "#56B4E9"))+
-  xlab("Population") +
-  ylab("Percent (%) with dose delayed") +
-  theme_bw(base_size = 11) +
-  #ggtitle("Second doses overdue (% of those due) by age group and visa status") +
-  theme(plot.title = element_text(hjust = 0.5),
-        legend.position = 'bottom', 
-        legend.title=element_blank(), 
-        axis.title.x=element_blank(), 
-        legend.text = element_text(size=15), 
-        axis.text = element_text(size = 10), 
-        axis.title.y = element_text(size = 22)) +
-  facet_wrap(vars(age_group), scales = "free_x") +
-  theme(strip.text = element_text(size = 17))
-ggsave("delayed_both_dose_age_visa.jpeg", width = 45, height = 25, dpi = 450, units = "cm")
-
-
-#### ============================================================== ####
-#### PLOT SECOND DOSE DELAYED, MIGRANT & ENGLAND BY AGE & ETHNICITY ####
-#### ============================================================== ####
-
-dose_two <- covid_reduced %>% 
-  select(age_at_dose1_cat, ethnicity_cat, delay_dose12_todate) %>%
-  mutate(ethnicity_cat=fct_relevel(ethnicity_cat,c("Black", "White", "South Asian", "Mixed", "Other", "Unknown")))
-
-ethnicity.lvls <- levels(as.factor(dose_two$ethnicity_cat))
-
-## 18-29 age group
-# Migrant group
-group1 <- dose_two %>%
-  filter(age_at_dose1_cat=="18-29") %>%
-  group_by(ethnicity_cat, delay_dose12_todate) %>%
-  summarise(value = n ())
-
-group1.out <- tibble()
-for(i in 1:length(ethnicity.lvls)){
-  x <- group1 %>% 
-    ungroup() %>%
-    filter(ethnicity_cat== ethnicity.lvls[i]) %>%
-    mutate(prop = (100* value/sum(value)))
-  group1.out <- rbind(group1.out,x)
-}
-
-## 30-39 age group
-# Migrant group
-group2 <- dose_two %>%
-  filter(age_at_dose1_cat=="30-39") %>%
-  group_by(ethnicity_cat, delay_dose12_todate) %>%
-  summarise(value = n ())
-
-group2.out <- tibble()
-for(i in 1:length(ethnicity.lvls)){
-  x <- group2 %>% 
-    ungroup() %>%
-    filter(ethnicity_cat== ethnicity.lvls[i]) %>%
-    mutate(prop = (100* value/sum(value)))
-  group2.out <- rbind(group2.out,x)
-}
-
-## 40-49 age group
-# Migrant group
-group3 <- dose_two %>%
-  filter(age_at_dose1_cat=="40-49") %>%
-  group_by(ethnicity_cat, delay_dose12_todate) %>%
-  summarise(value = n ())
-
-group3.out <- tibble()
-for(i in 1:length(ethnicity.lvls)){
-  x <- group3 %>% 
-    ungroup() %>%
-    filter(ethnicity_cat== ethnicity.lvls[i]) %>%
-    mutate(prop = (100* value/sum(value)))
-  group3.out <- rbind(group3.out,x)
-}
-
-## 50-54 age group
-# Migrant group
-group4 <- dose_two %>%
-  filter(age_at_dose1_cat=="50-54") %>%
-  group_by(ethnicity_cat, delay_dose12_todate) %>%
-  summarise(value = n ())
-
-group4.out <- tibble()
-for(i in 1:length(ethnicity.lvls)){
-  x <- group4 %>% 
-    ungroup() %>%
-    filter(ethnicity_cat== ethnicity.lvls[i]) %>%
-    mutate(prop = (100* value/sum(value)))
-  group4.out <- rbind(group4.out,x)
-}
-
-## 55-59 age group
-# Migrant group
-group5 <- dose_two %>%
-  filter(age_at_dose1_cat=="55-59") %>%
-  group_by(ethnicity_cat, delay_dose12_todate) %>%
-  summarise(value = n ())
-
-group5.out <- tibble()
-for(i in 1:length(ethnicity.lvls)){
-  x <- group5 %>% 
-    ungroup() %>%
-    filter(ethnicity_cat== ethnicity.lvls[i]) %>%
-    mutate(prop = (100* value/sum(value)))
-  group5.out <- rbind(group5.out,x)
-}
-
-## 60-64 age group
-# Migrant group
-group6 <- dose_two %>%
-  filter(age_at_dose1_cat=="60-64") %>%
-  group_by(ethnicity_cat, delay_dose12_todate) %>%
-  summarise(value = n ())
-
-group6.out <- tibble()
-for(i in 1:length(ethnicity.lvls)){
-  x <- group6 %>% 
-    ungroup() %>%
-    filter(ethnicity_cat== ethnicity.lvls[i]) %>%
-    mutate(prop = (100* value/sum(value)))
-  group6.out <- rbind(group6.out,x)
-}
-
-## 65-69 age group
-# Migrant group
-group7 <- dose_two %>%
-  filter(age_at_dose1_cat=="65-69") %>%
-  group_by(ethnicity_cat, delay_dose12_todate) %>%
-  summarise(value = n ())
-
-group7.out <- tibble()
-for(i in 1:length(ethnicity.lvls)){
-  x <- group7 %>% 
-    ungroup() %>%
-    filter(ethnicity_cat== ethnicity.lvls[i]) %>%
-    mutate(prop = (100* value/sum(value)))
-  group7.out <- rbind(group7.out,x)
-}
-
-## 70-79 age group
-# Migrant group
-group8 <- dose_two %>%
-  filter(age_at_dose1_cat=="70-79") %>%
-  group_by(ethnicity_cat, delay_dose12_todate) %>%
-  summarise(value = n ())
-
-group8.out <- tibble()
-for(i in 1:length(ethnicity.lvls)){
-  x <- group8 %>% 
-    ungroup() %>%
-    filter(ethnicity_cat== ethnicity.lvls[i]) %>%
-    mutate(prop = (100* value/sum(value)))
-  group8.out <- rbind(group8.out,x)
-}
-
-## 80+ age group
-# Migrant group
-group9 <- dose_two %>%
-  filter(age_at_dose1_cat=="80+") %>%
-  group_by(ethnicity_cat, delay_dose12_todate) %>%
-  summarise(value = n ())
-
-group9.out <- tibble()
-for(i in 1:length(ethnicity.lvls)){
-  x <- group9 %>% 
-    ungroup() %>%
-    filter(ethnicity_cat== ethnicity.lvls[i]) %>%
-    mutate(prop = (100* value/sum(value)))
-  group9.out <- rbind(group9.out,x)
-}
-
-
-## Combine all first FOUR groups together
-
-combine <- bind_rows(list('18-29' = group1.out, '30-39' = group2.out, '40-49' = group3.out, '50-54' = group4.out, 
-                          '55-59' = group5.out, '60-64' = group6.out, '65-69' = group7.out, '70-79' = group8.out,
-                          '80+' = group9.out), .id = "age_group")
-
-# Delayed dose two by migrant age group 
-combine <- combine %>%
-  group_by(age_group, ethnicity_cat) %>%
-  mutate(second_due = sum(value)) 
-
-# Filter to just those who are OVERDUE
-combine <- combine %>% 
-  filter(delay_dose12_todate=="overdue")
-
-## Took out those less than 10 
-combine  <- combine %>%
-  filter(value > 10)
-
-# Rename value as second_overdue
-combine <- combine %>%
-  rename(second_overdue = value)
-
-## England population
-setwd("")
-seconduk <- read_excel("ethnicity_covid_second_third_april_20.xlsx", sheet = "ethn_second_dose")
-seconduk <- seconduk %>%
-  select(age_at_dose1_cat = age_group, ethnicity_cat, second_due = `Second Doses due at 20 April 2022 (n)`, second_overdue = `Second doses overdue (n)`)
-
-seconduk <- seconduk %>%
-  rename(age_group = age_at_dose1_cat) %>%
-  mutate(prop = (100*(second_overdue)/second_due)) 
-
-## Combine Migrant and England 
-combine_all <- bind_rows(list(Migrant = combine, England = seconduk), .id = "Population")
-
-# Adding CI to each point estimate
-ci <- binconf(combine_all$second_overdue, combine_all$second_due, alpha=0.05, 
-              method="exact", 
-              include.x=FALSE, include.n =FALSE, return.df=TRUE)
-
-combine_ci <- cbind(combine_all, ci)
-combine_ci <- combine_ci %>%
-  mutate(upper = 100*Upper) %>%
-  mutate(lower = 100*Lower)
-
-combine_ci$ethnicity_cat <- as.factor(combine_ci$ethnicity_cat)
-
-combine_ci$ethnicity_cat <- as.character(combine_ci$ethnicity_cat)
-combine_ci$ethnicity_cat [combine_ci$ethnicity_cat =="South Asian"] <- "SA"
-combine_ci$ethnicity_cat [combine_ci$ethnicity_cat =="Unknown"] <- "Unkn"
-
-combine_ci$ethnicity_cat <- as.factor(combine_ci$ethnicity_cat)
-
-## Plot of proportion of each age group by ethnicity 
-
-dose2 <- ggplot(combine_ci %>% filter(age_group %in% c("18-29", "30-39", "40-49", "50-54", "55-59", "60-64", "65-69", "70-79", "80+")), aes(x=ethnicity_cat, y=prop, fill = Population))+
-  geom_bar(stat= "identity", position = "dodge", width=0.5) +
-  geom_errorbar( aes(x=ethnicity_cat, ymin=lower, ymax=upper), colour="black", width=0.5, size=0.8, position = position_dodge()) +
-  #scale_fill_manual(values =c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", eng)) +
-  scale_fill_manual("Population", limits=c("Migrant", "England"), values = c(mig, eng))+
-  xlab("Population") +
-  ylab("Percent (%) with second dose overdue") +
-  theme_bw(base_size = 11) +
-  #ggtitle("Second doses overdue (% of those due) by age group and visa status") +
-  theme(plot.title = element_text(hjust = 0.5),
-        legend.position = 'bottom', 
-        legend.title=element_blank(), 
-        axis.title.x=element_blank(), 
-        legend.text = element_text(size=10), 
-        axis.text = element_text(size = 7), 
-        axis.title.y = element_text(size = 15)) +
-  facet_wrap(vars(age_group), scales = "free_x") +
-  theme(strip.text = element_text(size = 10))
-ggsave("ethnicity_delayed_dose.pdf", width = 180, height = 225, dpi = 450, units = "mm")
-
-#### ============================================================== ####
 #### LOGICISTIC REGRESSION - SECOND DOSE DELAYED Y/N                ####
 #### ============================================================== ####
 
@@ -649,7 +190,9 @@ model <- glm(delay ~ sex + age_at_dose1_cat + visa_type + region_origin + ethnic
 summary(model)
 
 library(car)
+
 vif(model)
+
 
 # 1. Visa
 m1 <- glm(delay ~ sex + age_at_dose1_cat + ethnicity_cat + visa_type, family = binomial(), data = dose_two) 
@@ -713,6 +256,7 @@ covid_reduced <- covid_reduced %>%
 
 ## Getting rid of doses that are early - 
 # A third dose was considered valid when given at least 19 days after the second, doses with shorter time intervals were discarded. 
+# n = 115
 
 covid_reduced$early <- difftime(covid_reduced$dose3_date, covid_reduced$dose2_date, units="days")
 covid_reduced<- covid_reduced %>%
@@ -958,6 +502,7 @@ p <- ggarrange(delay_two_plot, delay_two_plot_eth, delay_three_plot, delay_three
 # common.legend = TRUE, legend = 'bottom'
 p <- p + theme(legend.position = 'bottom',  legend.title=element_blank(), legend.text = element_blank(), plot.title = element_text(size = 17))
 ggsave("delay1.pdf", width = 180, height = 210, dpi = 450, units = "mm", pointsize=10)
+
 
 
 #### ============================================================== ####
@@ -1361,7 +906,7 @@ combine <- combine %>%
   rename(third_overdue = value)
 
 ## England population
-setwd("")
+setwd("//filepor10/datalake$/Y125_COVID19Refu_PID/covid/2_data/vaccination_data")
 thirduk <- read_excel("ethnicity_covid_second_third_april_20.xlsx", sheet = "ethn_third_dose")
 thirduk <- thirduk %>%
   select(age_group, ethnicity_cat, third_due = `Third Doses due at 20 April 2022 (n)`, third_overdue = `Third doses overdue (n)`)
@@ -1439,7 +984,6 @@ model_table2 <- m2 %>%
   tbl_regression(exponentiate = TRUE, 
                  pvalue_fun = ~style_pvalue(.x, digits = 1))%>%
   add_n(location = "level")
-
 
 
 
