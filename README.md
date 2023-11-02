@@ -18,7 +18,7 @@ Conclusions: This PhD generated a cohort of migrants and refugees in England and
 
 Chapter 2. Identification of the Trends and Gaps within Migration Health Research in the UK: A Scoping Review
 
-Publication: 
+Publication: https://www.sciencedirect.com/science/article/pii/S2666623521000283
 
 Citation: Burns R, Zhang CX, Patel P, Eley I, Campos-Matos I, Aldridge RW. Migration health research in the United Kingdom: a scoping review. Journal of migration and health. 2021 Jan 1;4:100061.
 
@@ -32,7 +32,7 @@ Chapter 5. COVID-19 vaccination coverage for half a million non-EU migrants and 
 
 Publication: To be published Nov 2023.
 
-Citation: 
+Citation: To be published Nov 2023.
 
 
 
