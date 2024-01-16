@@ -23,15 +23,15 @@ Chapter 2. Identification of the Trends and Gaps within Migration Health Researc
 
 Chapter 3. Development of the Million Migrant cohort: Linkage process and evaluation of bias
 
-- Publication: Under Peer Review
-- Citation:
+- Publication: In press.
+- Citation: 
 
 Chapter 4. Assessment of the healthcare and hospital admissions of adult non-EU migrants and refugees in England
 
 Chapter 5. COVID-19 vaccination coverage for half a million non-EU migrants and refugees in England: a linked retrospective population-based cohort study
 
-- Publication: To be published Nov 2023.
-- Citation: To be published Nov 2023.
+- Publication: https://www.nature.com/articles/s41562-023-01768-6
+- Citation: Burns, R., Wyke, S., Eyre, M.T. et al. COVID-19 vaccination coverage for half a million non-EU migrants and refugees in England. Nat Hum Behav (2023). https://doi.org/10.1038/s41562-023-01768-6
 
 
 
