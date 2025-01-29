@@ -23,8 +23,8 @@ Chapter 2. Identification of the Trends and Gaps within Migration Health Researc
 
 Chapter 3. Development of the Million Migrant cohort: Linkage process and evaluation of bias
 
-- Publication: In press.
-- Citation: 
+- Publication: https://www.ijpds.org/article/view/2181
+- Citation: Burns R, Wyke S, Boukari Y, Katikireddi SV, Zenner D, Campos-Matos I, Harron K, Aldridge RW. Linking migration and hospital data in England: linkage process and evaluation of bias. International Journal of Population Data Science. 2024;9(1).
 
 Chapter 4. Assessment of the healthcare and hospital admissions of adult non-EU migrants and refugees in England
 
